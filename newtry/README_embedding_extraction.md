@@ -1,6 +1,12 @@
 # Caption Embedding 提取工具
 
-这个工具专门用于处理 `Anno_Shared1000.txt` 文件，提取其中所有caption的embedding向量。
+这个工具专门用于处理 `Anno_Shared1000.txt` 文件，**按图像分组**提取embedding向量。
+
+## 处理方式
+
+- **输入**：1000张图像，每张图像有5个caption
+- **处理**：每张图像的5个caption分别生成embedding，然后计算平均embedding
+- **输出**：1000个图像embedding向量（每个向量是5个caption embedding的平均值）
 
 ## 文件说明
 
@@ -35,8 +41,8 @@ python extract_embeddings_shared1000.py --input_file "your_file_path.txt" --outp
 
 脚本会在 `./embeddings_output/` 目录下生成以下文件：
 
-- `embeddings.npy` - 所有caption的embedding向量（numpy数组）
-- `metadata.pkl` - 元数据（包含caption文本、图像ID等）
+- `image_embeddings.npy` - 1000个图像的平均embedding向量（形状：1000 × 768）
+- `metadata.pkl` - 元数据（包含每张图像的所有caption、图像ID等）
 - `metadata.json` - 元数据的JSON格式（便于查看）
 - `embeddings_pca.png` - 可视化图（如果使用--visualize参数）
 
@@ -49,13 +55,13 @@ python extract_embeddings_shared1000.py --input_file "your_file_path.txt" --outp
 ```
 
 ### 输出格式
-- **embeddings.npy**: 形状为 (N, 768) 的numpy数组，其中N是caption总数，768是mpnet模型的embedding维度
+- **image_embeddings.npy**: 形状为 (1000, 768) 的numpy数组，其中1000是图像数量，768是mpnet模型的embedding维度
 - **metadata.pkl**: 包含以下字段的字典：
-  - `captions`: 所有caption文本的列表
-  - `image_ids`: 对应的图像ID列表
-  - `caption_ids`: 对应的caption ID列表
-  - `embedding_shape`: embedding数组的形状
+  - `image_ids`: 图像ID列表（1000个）
+  - `captions_per_image`: 每张图像的所有caption（1000个列表，每个列表包含5个caption）
+  - `embedding_shape`: embedding数组的形状 (1000, 768)
   - `model_name`: 使用的模型名称
+  - `processing_method`: 处理方法说明
 
 ## 使用示例
 
@@ -63,17 +69,24 @@ python extract_embeddings_shared1000.py --input_file "your_file_path.txt" --outp
 import numpy as np
 import pickle
 
-# 加载embeddings
-embeddings = np.load('./embeddings_output/embeddings.npy')
+# 加载图像embeddings
+image_embeddings = np.load('./embeddings_output/image_embeddings.npy')
 
 # 加载元数据
 with open('./embeddings_output/metadata.pkl', 'rb') as f:
     metadata = pickle.load(f)
 
-# 查看第一个caption的embedding
-print(f"第一个caption: {metadata['captions'][0]}")
-print(f"对应的embedding形状: {embeddings[0].shape}")
-print(f"embedding向量: {embeddings[0][:10]}...")  # 显示前10个维度
+# 查看第一张图像的信息
+print(f"第一张图像ID: {metadata['image_ids'][0]}")
+print(f"第一张图像的5个caption:")
+for i, caption in enumerate(metadata['captions_per_image'][0]):
+    print(f"  {i+1}. {caption}")
+print(f"对应的平均embedding形状: {image_embeddings[0].shape}")
+print(f"平均embedding向量前10个值: {image_embeddings[0][:10]}")
+
+# 查看整体统计
+print(f"总图像数量: {len(metadata['image_ids'])}")
+print(f"Embedding数组形状: {image_embeddings.shape}")
 ```
 
 ## 注意事项
