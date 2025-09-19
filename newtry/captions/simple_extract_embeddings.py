@@ -61,7 +61,7 @@ def main():
     print(f"正在加载模型: {model_name}")
     
     # 尝试使用本地模型路径
-    local_model_path = "./models/all-mpnet-base-v2"
+    local_model_path = "../models/all-mpnet-base-v2"
     
     try:
         if os.path.exists(local_model_path):
