@@ -13,8 +13,9 @@ def load_data():
     print("1. 加载数据...")
     
     # 加载猴子RDM
-    with open('all_rdms.pkl', 'rb') as f:
-        monkey_rdms = pickle.load(f)
+    with open('all_rdms_correlation.pkl', 'rb') as f:
+        rdm_data = pickle.load(f)
+        monkey_rdms = rdm_data['all_rdms']  # 提取实际的RDM数据
     
     # 加载原始数据
     with open('extracted_monkey_responses.pkl', 'rb') as f:
@@ -44,42 +45,72 @@ def load_data():
 
 def compute_noise_ceiling(rdms):
     """
-    计算noise ceiling
+    计算noise ceiling (使用原始项目的方法：每个session与其他session平均RDM的相关性)
     
     Args:
         rdms: list of RDM matrices for the same arealabel
         
     Returns:
-        noise_ceiling: 平均的session间RSA值
-        individual_rsas: 每对session的RSA值
+        individual_noise_ceilings: 每个session的独立noise ceiling值
+        mean_noise_ceiling: 平均的noise ceiling值
     """
     if len(rdms) < 2:
-        return None, []
+        return [], None
     
-    individual_rsas = []
+    individual_noise_ceilings = []
     
-    # 计算所有session对之间的RSA
+    # 对每个session计算独立的noise ceiling
     for i in range(len(rdms)):
-        for j in range(i+1, len(rdms)):
-            rsa, _ = compute_rsa(rdms[i], rdms[j])
-            individual_rsas.append(rsa)
+        # 当前session的RDM
+        current_rdm = rdms[i]
+        if isinstance(current_rdm, dict):
+            current_rdm = current_rdm['rdm']
+        
+        # 其他session的RDM
+        other_rdms = [rdms[j] for j in range(len(rdms)) if j != i]
+        
+        # 计算其他session的平均RDM
+        mean_other_rdm = np.zeros_like(current_rdm)
+        for other_rdm in other_rdms:
+            if isinstance(other_rdm, dict):
+                other_rdm = other_rdm['rdm']
+            mean_other_rdm += other_rdm
+        mean_other_rdm /= len(other_rdms)
+        
+        # 计算当前session RDM与其他session平均RDM的相关性
+        rsa, _ = compute_rsa(current_rdm, mean_other_rdm)
+        individual_noise_ceilings.append(rsa)
     
-    # noise ceiling是平均的session间RSA
-    noise_ceiling = np.mean(individual_rsas)
+    # 计算平均noise ceiling
+    mean_noise_ceiling = np.mean(individual_noise_ceilings)
     
-    return noise_ceiling, individual_rsas
+    return individual_noise_ceilings, mean_noise_ceiling
 
 def compute_rsa(rdm1, rdm2):
     """计算RSA"""
+    # 如果RDM是字典格式，提取实际的RDM矩阵
+    if isinstance(rdm1, dict):
+        rdm1 = rdm1['rdm']
+    if isinstance(rdm2, dict):
+        rdm2 = rdm2['rdm']
+    
+    print(f"    RDM1形状: {rdm1.shape}, RDM2形状: {rdm2.shape}")
+    
     if rdm1.shape != rdm2.shape:
         min_size = min(rdm1.shape[0], rdm2.shape[0])
         rdm1 = rdm1[:min_size, :min_size]
         rdm2 = rdm2[:min_size, :min_size]
+        print(f"    调整后形状: {rdm1.shape}")
     
     mask = np.triu(np.ones_like(rdm1, dtype=bool), k=1)
     rdm1_values = rdm1[mask]
     rdm2_values = rdm2[mask]
+    print(f"    比较的数值对数量: {len(rdm1_values)}")
+    print(f"    RDM1值范围: [{rdm1_values.min():.4f}, {rdm1_values.max():.4f}]")
+    print(f"    RDM2值范围: [{rdm2_values.min():.4f}, {rdm2_values.max():.4f}]")
+    
     correlation, p_value = spearmanr(rdm1_values, rdm2_values)
+    print(f"    Spearman相关系数: {correlation:.4f}, p值: {p_value:.4f}")
     return correlation, p_value
 
 def compute_corrected_rsa(rsa_value, noise_ceiling):
@@ -120,14 +151,14 @@ def analyze_arealabel_with_noise_ceiling(arealabel, sessions_data, llm_rdm):
     session_nums = [session['session'] for session in sessions_data]
     
     # 计算noise ceiling
-    noise_ceiling, individual_rsas = compute_noise_ceiling(rdms)
+    individual_noise_ceilings, mean_noise_ceiling = compute_noise_ceiling(rdms)
     
-    if noise_ceiling is None:
+    if not individual_noise_ceilings:
         print(f"   ⚠️  只有1个session，无法计算noise ceiling")
         return None
     
-    print(f"   Noise ceiling: {noise_ceiling:.4f}")
-    print(f"   Session间RSA范围: {min(individual_rsas):.4f} - {max(individual_rsas):.4f}")
+    print(f"   平均Noise ceiling: {mean_noise_ceiling:.4f}")
+    print(f"   各session Noise ceiling: {[f'{nc:.4f}' for nc in individual_noise_ceilings]}")
     
     # 计算每个session与LLM的RSA
     session_rsas = []
@@ -136,7 +167,9 @@ def analyze_arealabel_with_noise_ceiling(arealabel, sessions_data, llm_rdm):
     
     for i, (session_num, rdm) in enumerate(zip(session_nums, rdms)):
         rsa, p_value = compute_rsa(rdm, llm_rdm)
-        corrected_rsa, warning = compute_corrected_rsa(rsa, noise_ceiling)
+        
+        # 使用该session的独立noise ceiling进行矫正
+        corrected_rsa, warning = compute_corrected_rsa(rsa, individual_noise_ceilings[i])
         
         session_rsas.append(rsa)
         corrected_rsas.append(corrected_rsa)
@@ -160,8 +193,8 @@ def analyze_arealabel_with_noise_ceiling(arealabel, sessions_data, llm_rdm):
     return {
         'arealabel': arealabel,
         'n_sessions': len(sessions_data),
-        'noise_ceiling': noise_ceiling,
-        'individual_rsas': individual_rsas,
+        'mean_noise_ceiling': mean_noise_ceiling,
+        'individual_noise_ceilings': individual_noise_ceilings,
         'session_rsas': session_rsas,
         'corrected_rsas': corrected_rsas,
         'warnings': warnings,
@@ -190,14 +223,15 @@ def create_individual_arealabel_plots(results, save_dir='noise_ceiling_plots'):
         session_rsas = result['session_rsas']
         corrected_rsas = result['corrected_rsas']
         warnings = result['warnings']
-        noise_ceiling = result['noise_ceiling']
+        mean_noise_ceiling = result['mean_noise_ceiling']
+        individual_noise_ceilings = result['individual_noise_ceilings']
         
         # 创建图表
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
-        fig.suptitle(f'RSA Analysis for {arealabel} (Noise Ceiling: {noise_ceiling:.4f})', 
+        fig.suptitle(f'RSA Analysis for {arealabel} (Mean Noise Ceiling: {mean_noise_ceiling:.4f})', 
                     fontsize=16, fontweight='bold')
         
-        # 1. 原始RSA值条形图
+        # 1. 原始RSA值条形图（带noise ceiling标注）
         sessions = [f"Session {s}" for s in session_nums]
         bars1 = ax1.bar(sessions, session_rsas, color='skyblue', alpha=0.7, edgecolor='navy')
         ax1.set_title(f'Original RSA Values by Session\nMean: {np.mean(session_rsas):.4f} ± {np.std(session_rsas):.4f}')
@@ -205,29 +239,35 @@ def create_individual_arealabel_plots(results, save_dir='noise_ceiling_plots'):
         ax1.set_xlabel('Session')
         ax1.tick_params(axis='x', rotation=45)
         
-        # 添加数值标签
-        for bar, value in zip(bars1, session_rsas):
+        # 添加数值标签（RSA值和对应的noise ceiling）
+        for bar, rsa_value, nc_value in zip(bars1, session_rsas, individual_noise_ceilings):
             height = bar.get_height()
             ax1.text(bar.get_x() + bar.get_width()/2., height + 0.001,
-                    f'{value:.4f}', ha='center', va='bottom', fontsize=9)
+                    f'{rsa_value:.4f}', ha='center', va='bottom', fontsize=9)
+            # 在下方显示noise ceiling
+            ax1.text(bar.get_x() + bar.get_width()/2., height - 0.01,
+                    f'NC: {nc_value:.3f}', ha='center', va='top', fontsize=8, color='red')
         
         # 添加平均线
         ax1.axhline(y=np.mean(session_rsas), color='red', linestyle='--', alpha=0.7, 
                     label=f'Mean: {np.mean(session_rsas):.4f}')
         ax1.legend()
         
-        # 2. 矫正后RSA值条形图
+        # 2. 矫正后RSA值条形图（带noise ceiling标注）
         bars2 = ax2.bar(sessions, corrected_rsas, color='lightcoral', alpha=0.7, edgecolor='darkred')
         ax2.set_title(f'Corrected RSA Values by Session\nMean: {np.mean(corrected_rsas):.4f} ± {np.std(corrected_rsas):.4f}')
         ax2.set_ylabel('Corrected RSA Value')
         ax2.set_xlabel('Session')
         ax2.tick_params(axis='x', rotation=45)
         
-        # 添加数值标签
-        for bar, value in zip(bars2, corrected_rsas):
+        # 添加数值标签（矫正RSA值和对应的noise ceiling）
+        for bar, corr_value, nc_value in zip(bars2, corrected_rsas, individual_noise_ceilings):
             height = bar.get_height()
             ax2.text(bar.get_x() + bar.get_width()/2., height + 0.001,
-                    f'{value:.4f}', ha='center', va='bottom', fontsize=9)
+                    f'{corr_value:.4f}', ha='center', va='bottom', fontsize=9)
+            # 在下方显示noise ceiling
+            ax2.text(bar.get_x() + bar.get_width()/2., height - 0.01,
+                    f'NC: {nc_value:.3f}', ha='center', va='top', fontsize=8, color='red')
         
         # 添加平均线
         ax2.axhline(y=np.mean(corrected_rsas), color='red', linestyle='--', alpha=0.7, 
@@ -248,37 +288,45 @@ def create_individual_arealabel_plots(results, save_dir='noise_ceiling_plots'):
         ax3.set_xticklabels(sessions, rotation=45)
         ax3.legend()
         
-        # 添加数值标签
-        for bar, value in zip(bars3_orig, session_rsas):
+        # 添加数值标签（带noise ceiling）
+        for bar, value, nc_value in zip(bars3_orig, session_rsas, individual_noise_ceilings):
             height = bar.get_height()
             ax3.text(bar.get_x() + bar.get_width()/2., height + 0.001,
                     f'{value:.3f}', ha='center', va='bottom', fontsize=8)
+            # 在下方显示noise ceiling
+            ax3.text(bar.get_x() + bar.get_width()/2., height - 0.01,
+                    f'NC:{nc_value:.2f}', ha='center', va='top', fontsize=7, color='red')
         
         for bar, value in zip(bars3_corr, corrected_rsas):
             height = bar.get_height()
             ax3.text(bar.get_x() + bar.get_width()/2., height + 0.001,
                     f'{value:.3f}', ha='center', va='bottom', fontsize=8)
         
-        # 4. 矫正比例和警告信息
-        correction_ratios = [c/o for c, o in zip(corrected_rsas, session_rsas)]
+        # 4. 矫正比例信息（每个session独立）
+        # 计算每个session的独立correction ratio
+        correction_ratios = [corrected_rsas[i] / session_rsas[i] for i in range(len(session_rsas))]
+        
+        # 调试信息
+        print(f"  {arealabel} - 原始RSA: {[f'{x:.4f}' for x in session_rsas]}")
+        print(f"  {arealabel} - 矫正后RSA: {[f'{x:.4f}' for x in corrected_rsas]}")
+        print(f"  {arealabel} - 各session矫正比例: {[f'{x:.2f}' for x in correction_ratios]}")
+        print(f"  {arealabel} - 各session Noise Ceiling: {[f'{x:.4f}' for x in individual_noise_ceilings]}")
+        print(f"  {arealabel} - Noise Ceiling计算方法: 每个session与其他session平均RDM的相关性")
+        
+        # 显示矫正比例信息（条形图形式）
         bars4 = ax4.bar(sessions, correction_ratios, color='orange', alpha=0.7, edgecolor='darkorange')
-        ax4.set_title('Correction Ratio (Corrected/Original)')
+        ax4.set_title('Correction Ratio by Session (Corrected/Original)')
         ax4.set_ylabel('Correction Ratio')
         ax4.set_xlabel('Session')
         ax4.tick_params(axis='x', rotation=45)
         ax4.axhline(y=1, color='red', linestyle='--', alpha=0.7, label='No correction')
         ax4.legend()
         
-        # 添加数值标签和警告信息
-        for i, (bar, ratio, warning) in enumerate(zip(bars4, correction_ratios, warnings)):
+        # 添加数值标签
+        for bar, ratio in zip(bars4, correction_ratios):
             height = bar.get_height()
             ax4.text(bar.get_x() + bar.get_width()/2., height + 0.02,
                     f'{ratio:.2f}', ha='center', va='bottom', fontsize=8)
-            
-            # 如果有警告，在图上标注
-            if warning:
-                ax4.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                        '⚠️', ha='center', va='bottom', fontsize=12, color='red')
         
         plt.tight_layout()
         
@@ -297,6 +345,7 @@ def create_individual_arealabel_plots(results, save_dir='noise_ceiling_plots'):
                 'Original_RSA': session_rsas[i],
                 'Corrected_RSA': corrected_rsas[i],
                 'Correction_Ratio': correction_ratios[i],
+                'Noise_Ceiling': individual_noise_ceilings[i],
                 'Warning': warnings[i] if warnings[i] else ''
             })
         
@@ -321,7 +370,7 @@ def create_noise_ceiling_plots(results, save_dir='noise_ceiling_plots'):
         return
     
     arealabels = [r['arealabel'] for r in valid_results]
-    noise_ceilings = [r['noise_ceiling'] for r in valid_results]
+    noise_ceilings = [r['mean_noise_ceiling'] for r in valid_results]
     mean_rsas = [r['mean_rsa'] for r in valid_results]
     mean_corrected_rsas = [r['mean_corrected_rsa'] for r in valid_results]
     n_sessions = [r['n_sessions'] for r in valid_results]
@@ -412,12 +461,12 @@ def create_noise_ceiling_plots(results, save_dir='noise_ceiling_plots'):
             table_data.append({
                 'Arealabel': result['arealabel'],
                 'N_Sessions': result['n_sessions'],
-                'Noise_Ceiling': result['noise_ceiling'],
+                'Mean_Noise_Ceiling': result['mean_noise_ceiling'],
                 'Mean_Original_RSA': result['mean_rsa'],
                 'Std_Original_RSA': result['std_rsa'],
                 'Mean_Corrected_RSA': result['mean_corrected_rsa'],
                 'Std_Corrected_RSA': result['std_corrected_rsa'],
-                'Correction_Ratio': result['mean_corrected_rsa'] / result['mean_rsa']
+                'Mean_Correction_Ratio': np.mean([result['corrected_rsas'][i] / result['session_rsas'][i] for i in range(len(result['session_rsas']))]) if len(result['session_rsas']) > 0 else 1.0
             })
     
     import pandas as pd

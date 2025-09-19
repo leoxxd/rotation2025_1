@@ -2,7 +2,7 @@
 
 这个文件夹包含了从猴子数据中提取response的完整工具集。
 
-## 文件说明
+## 核心文件说明
 
 ### 1. `extract_monkey_responses.py`
 主要的数据提取脚本，功能包括：
@@ -12,23 +12,25 @@
 - 跳过arealabel为"Unknown"的ROI
 - 保存提取的数据为.mat和.pkl格式
 
-### 2. `extract_by_session.py`
-按session提取数据的脚本，功能包括：
-- 提取特定session的数据
-- 验证数据格式
-- 保存单个session的数据
-
-### 3. `compute_rdm_all_sessions.py`
+### 2. `compute_rdm_all_sessions.py`
 计算所有session的RDM脚本，功能包括：
 - 计算每个session的RDM矩阵
 - 分析RDM相似性
 - 保存RDM数据
 
-### 4. `run_rsa_analysis.py`
-RSA分析脚本，功能包括：
+### 3. `rsa_with_noise_ceiling.py`
+完整的RSA分析脚本，功能包括：
 - 按arealabel对session进行分组
+- 计算noise ceiling并进行矫正
 - 与LLM embedding的RDM进行RSA分析
 - 生成详细的分析结果和可视化
+- 为每个arealabel创建单独的图表
+
+### 4. `extract_by_session.py`（可选）
+按session提取数据的辅助脚本，功能包括：
+- 提取特定session的数据
+- 验证数据格式
+- 保存单个session的数据
 
 ### 5. `extracted_monkey_responses.mat` 和 `extracted_monkey_responses.pkl`
 提取的数据文件，包含：
@@ -80,9 +82,9 @@ python extract_by_session.py
 python compute_rdm_all_sessions.py
 ```
 
-### 进行RSA分析
+### 进行RSA分析（包含noise ceiling矫正）
 ```bash
-python run_rsa_analysis.py
+python rsa_with_noise_ceiling.py
 ```
 
 ### 使用数据

@@ -203,12 +203,21 @@ def analyze_rdm_similarity(all_rdms):
         print("需要至少2个session才能进行相似性分析")
         return
     
+    print(f"计算 {n_sessions} 个session间的RDM相似性...")
+    print(f"总共需要计算 {n_sessions * (n_sessions + 1) // 2} 个相关系数")
+    
     # 计算session间RDM的相关性
     similarity_matrix = np.zeros((n_sessions, n_sessions))
+    total_pairs = n_sessions * (n_sessions + 1) // 2
+    current_pair = 0
     
     for i, session_i in enumerate(sessions):
         for j, session_j in enumerate(sessions):
             if i <= j:  # 只计算上三角矩阵
+                current_pair += 1
+                if current_pair % 10 == 0 or current_pair == total_pairs:
+                    print(f"  进度: {current_pair}/{total_pairs} ({current_pair/total_pairs*100:.1f}%)")
+                
                 rdm_i = all_rdms[session_i]['rdm']
                 rdm_j = all_rdms[session_j]['rdm']
                 
@@ -253,8 +262,9 @@ def main():
     
     # 设置参数
     method = 'correlation'  # 可选: 'correlation', 'euclidean', 'cosine'
-    save_individual = True  # 是否保存单个session的RDM
+    save_individual = False  # 是否保存单个session的RDM（建议False，节省空间）
     save_combined = True    # 是否保存汇总数据
+    analyze_similarity = False  # 是否分析session间相似性（可选，会比较慢）
     
     # 计算所有RDM
     all_rdms, session_info = compute_all_rdms(
@@ -264,9 +274,11 @@ def main():
         save_combined=save_combined
     )
     
-    # 分析RDM相似性
-    if len(all_rdms) > 1:
+    # 分析RDM相似性（可选）
+    if analyze_similarity and len(all_rdms) > 1:
         similarity_matrix = analyze_rdm_similarity(all_rdms)
+    else:
+        print(f"\n跳过RDM相似性分析（设置analyze_similarity=False）")
     
     # 显示使用说明
     print(f"\n=== 如何使用保存的RDM数据 ===")
