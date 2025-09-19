@@ -10,8 +10,14 @@ import pickle
 import numpy as np
 import nltk
 from sentence_transformers import SentenceTransformer
+from tqdm import tqdm
 import warnings
 warnings.filterwarnings('ignore')
+
+# 设置Hugging Face缓存目录到当前项目目录
+os.environ['HF_HOME'] = './huggingface_cache'
+os.environ['TRANSFORMERS_CACHE'] = './huggingface_cache'
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'  # 使用国内镜像
 
 class WordAverageEmbeddingGenerator:
     def __init__(self, model_name='all-mpnet-base-v2'):
@@ -31,59 +37,78 @@ class WordAverageEmbeddingGenerator:
         
         # 下载必要的NLTK数据
         try:
-            nltk.data.find('tokenizers/punkt')
+            nltk.data.find('tokenizers/punkt_tab')
         except LookupError:
-            print("下载NLTK punkt tokenizer...")
-            nltk.download('punkt')
+            print("下载NLTK punkt_tab tokenizer...")
+            nltk.download('punkt_tab')
+        
+        try:
+            nltk.data.find('taggers/averaged_perceptron_tagger')
+        except LookupError:
+            print("下载NLTK averaged_perceptron_tagger...")
+            nltk.download('averaged_perceptron_tagger')
     
     def load_model(self):
         """加载sentence transformer模型"""
-        print(f"加载模型: {self.model_name}")
-        self.model = SentenceTransformer(self.model_name)
+        print(f"正在加载模型: {self.model_name}")
+        
+        # 尝试使用本地模型路径
+        local_model_path = "../models/all-mpnet-base-v2"
+        
+        try:
+            if os.path.exists(local_model_path):
+                print(f"使用本地模型: {local_model_path}")
+                self.model = SentenceTransformer(local_model_path)
+            else:
+                print("尝试从网络下载模型...")
+                self.model = SentenceTransformer(self.model_name)
+        except Exception as e:
+            print(f"模型加载失败: {e}")
+            print("请尝试以下解决方案:")
+            print("1. 设置环境变量: set HF_ENDPOINT=https://hf-mirror.com")
+            print("2. 手动下载模型到 ./models/all-mpnet-base-v2/ 目录")
+            print("3. 使用其他embedding模型")
+            raise e
+        
         print(f"模型加载完成，embedding维度: {self.model.get_sentence_embedding_dimension()}")
     
     def load_captions(self):
-        """加载caption文件"""
-        print(f"加载caption文件: {self.caption_file}")
+        """加载caption文件 - 与simple_extract_embeddings.py完全一致"""
+        print(f"正在加载数据: {self.caption_file}")
         
         if not os.path.exists(self.caption_file):
             raise FileNotFoundError(f"Caption文件不存在: {self.caption_file}")
         
-        # 支持多种格式
-        if self.caption_file.endswith('.pkl'):
-            # pickle格式：每个图片有多句caption
-            with open(self.caption_file, 'rb') as f:
-                captions = pickle.load(f)
-            print(f"加载了 {len(captions)} 个图片的captions")
-            print(f"每个图片平均有 {np.mean([len(c) for c in captions]):.1f} 句caption")
-        elif self.caption_file.endswith('.txt'):
-            # 文本格式：每行一个图片的多个caption（JSON格式）
-            import json
-            captions = []
-            with open(self.caption_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line:  # 跳过空行
-                        try:
-                            # 解析JSON格式的caption数据
-                            caption_data = json.loads(line)
-                            # 提取caption文本
-                            image_captions = [item['caption'] for item in caption_data]
-                            captions.append(image_captions)
-                        except json.JSONDecodeError as e:
-                            print(f"⚠️ 解析JSON失败: {e}")
-                            continue
-            print(f"加载了 {len(captions)} 个图片的captions")
-            print(f"每个图片平均有 {np.mean([len(c) for c in captions]):.1f} 句caption")
-        else:
-            # 其他格式：每行一句caption
-            captions = []
-            with open(self.caption_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line:  # 跳过空行
-                        captions.append([line])  # 包装成列表格式以保持一致性
-            print(f"加载了 {len(captions)} 个captions")
+        # 按图像分组存储数据
+        image_data = {}  # {image_id: [caption1, caption2, caption3, caption4, caption5]}
+        
+        with open(self.caption_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        for line in lines:
+            line = line.strip()
+            if line:
+                try:
+                    # 解析每行的数据
+                    image_group = eval(line)
+                    for item in image_group:
+                        image_id = item['image_id']
+                        caption = item['caption']
+                        
+                        if image_id not in image_data:
+                            image_data[image_id] = []
+                        image_data[image_id].append(caption)
+                except Exception as e:
+                    print(f"解析行时出错: {e}")
+                    continue
+        
+        # 转换为列表格式
+        captions = []
+        for image_id in sorted(image_data.keys()):
+            captions.append(image_data[image_id])
+        
+        print(f"成功加载 {len(captions)} 张图像")
+        print(f"每张图像平均有 {np.mean([len(c) for c in captions]):.1f} 个caption")
         
         return captions
     
@@ -147,9 +172,7 @@ class WordAverageEmbeddingGenerator:
         total_words = 0
         skipped_images = 0
         
-        for i, image_captions in enumerate(captions):
-            if i % 100 == 0:
-                print(f"处理进度: {i}/{n_images} ({i/n_images*100:.1f}%)")
+        for i, image_captions in enumerate(tqdm(captions, desc="处理图片")):
             
             # 收集该图片所有caption的单词
             all_words = []
@@ -255,9 +278,19 @@ class WordAverageEmbeddingGenerator:
         return embeddings, word_lists
 
 def main():
-    """主函数"""
+    """主函数 - 与simple_extract_embeddings.py完全一致"""
+    # 配置参数
+    input_file = "Anno_Shared1000.txt"
+    output_dir = "./embeddings_output"
+    model_name = "all-mpnet-base-v2"
+    
+    print("开始处理Anno_Shared1000.txt文件...")
+    print("处理方式：每张图像的5个caption分词后，对每个单词生成embedding，然后平均得到图像embedding")
+    
     # 创建生成器
-    generator = WordAverageEmbeddingGenerator(model_name='all-MiniLM-L6-v2')
+    generator = WordAverageEmbeddingGenerator(model_name=model_name)
+    generator.caption_file = input_file
+    generator.output_dir = output_dir
     
     # 运行生成流程
     embeddings, word_lists = generator.run()
