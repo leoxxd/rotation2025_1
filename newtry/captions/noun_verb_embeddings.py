@@ -13,6 +13,11 @@ from sentence_transformers import SentenceTransformer
 import warnings
 warnings.filterwarnings('ignore')
 
+# 设置Hugging Face缓存目录到当前项目目录
+os.environ['HF_HOME'] = './huggingface_cache'
+os.environ['TRANSFORMERS_CACHE'] = './huggingface_cache'
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'  # 使用国内镜像
+
 class NounVerbEmbeddingGenerator:
     def __init__(self, model_name='all-mpnet-base-v2'):
         """
@@ -26,72 +31,92 @@ class NounVerbEmbeddingGenerator:
         self.caption_file = "Anno_Shared1000.txt"
         self.output_dir = "embeddings_output"
         
+        nltk_data_path = 'C:/Users/Leo/AppData/Roaming/nltk_data'
+        os.makedirs(nltk_data_path, exist_ok=True)
+        nltk.data.path = [nltk_data_path]  # 覆盖其他路径
         # 创建输出目录
         os.makedirs(self.output_dir, exist_ok=True)
         
-        # 下载必要的NLTK数据
+        # 下载必要的 NLTK 数据
         try:
             nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            print("正在下载 NLTK punkt 分词器...")
+            nltk.download('punkt', download_dir=nltk_data_path, force=True)
+        
+        try:
             nltk.data.find('taggers/averaged_perceptron_tagger')
         except LookupError:
-            print("下载NLTK数据...")
-            nltk.download('punkt')
-            nltk.download('averaged_perceptron_tagger')
+            print("正在下载 NLTK averaged_perceptron_tagger...")
+            nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_path, force=True)
     
     def load_model(self):
         """加载sentence transformer模型"""
-        print(f"加载模型: {self.model_name}")
-        self.model = SentenceTransformer(self.model_name)
+        print(f"正在加载模型: {self.model_name}")
+        
+        # 尝试使用本地模型路径
+        local_model_path = "../models/all-mpnet-base-v2"
+        
+        try:
+            if os.path.exists(local_model_path):
+                print(f"使用本地模型: {local_model_path}")
+                self.model = SentenceTransformer(local_model_path)
+            else:
+                print("尝试从网络下载模型...")
+                self.model = SentenceTransformer(self.model_name)
+        except Exception as e:
+            print(f"模型加载失败: {e}")
+            print("请尝试以下解决方案:")
+            print("1. 设置环境变量: set HF_ENDPOINT=https://hf-mirror.com")
+            print("2. 手动下载模型到 ./models/all-mpnet-base-v2/ 目录")
+            print("3. 使用其他embedding模型")
+            raise e
+        
         print(f"模型加载完成，embedding维度: {self.model.get_sentence_embedding_dimension()}")
     
     def load_captions(self):
-        """加载caption文件"""
-        print(f"加载caption文件: {self.caption_file}")
+        """加载caption文件 - 与simple_extract_embeddings.py完全一致"""
+        print(f"正在加载数据: {self.caption_file}")
         
         if not os.path.exists(self.caption_file):
             raise FileNotFoundError(f"Caption文件不存在: {self.caption_file}")
         
-        # 支持多种格式
-        if self.caption_file.endswith('.pkl'):
-            # pickle格式：每个图片有多句caption
-            with open(self.caption_file, 'rb') as f:
-                captions = pickle.load(f)
-            print(f"加载了 {len(captions)} 个图片的captions")
-            print(f"每个图片平均有 {np.mean([len(c) for c in captions]):.1f} 句caption")
-        elif self.caption_file.endswith('.txt'):
-            # 文本格式：每行一个图片的多个caption（JSON格式）
-            import json
-            captions = []
-            with open(self.caption_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line:  # 跳过空行
-                        try:
-                            # 解析JSON格式的caption数据
-                            caption_data = json.loads(line)
-                            # 提取caption文本
-                            image_captions = [item['caption'] for item in caption_data]
-                            captions.append(image_captions)
-                        except json.JSONDecodeError as e:
-                            print(f"⚠️ 解析JSON失败: {e}")
-                            continue
-            print(f"加载了 {len(captions)} 个图片的captions")
-            print(f"每个图片平均有 {np.mean([len(c) for c in captions]):.1f} 句caption")
-        else:
-            # 其他格式：每行一句caption
-            captions = []
-            with open(self.caption_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line:  # 跳过空行
-                        captions.append([line])  # 包装成列表格式以保持一致性
-            print(f"加载了 {len(captions)} 个captions")
+        # 按图像分组存储数据
+        image_data = {}  # {image_id: [caption1, caption2, caption3, caption4, caption5]}
+        
+        with open(self.caption_file, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+        
+        for line in lines:
+            line = line.strip()
+            if line:
+                try:
+                    # 解析每行的数据
+                    image_group = eval(line)
+                    for item in image_group:
+                        image_id = item['image_id']
+                        caption = item['caption']
+                        
+                        if image_id not in image_data:
+                            image_data[image_id] = []
+                        image_data[image_id].append(caption)
+                except Exception as e:
+                    print(f"解析行时出错: {e}")
+                    continue
+        
+        # 转换为列表格式
+        captions = []
+        for image_id in sorted(image_data.keys()):
+            captions.append(image_data[image_id])
+        
+        print(f"成功加载 {len(captions)} 张图像")
+        print(f"每张图像平均有 {np.mean([len(c) for c in captions]):.1f} 个caption")
         
         return captions
     
     def extract_nouns_and_verbs(self, caption):
         """
-        从caption中提取名词和动词
+        从caption中提取名词和动词 - 与原始代码完全一致
         
         Args:
             caption: 输入文本
@@ -100,26 +125,35 @@ class NounVerbEmbeddingGenerator:
             nouns: 名词列表
             verbs: 动词列表
         """
-        # 分词和词性标注
-        tokens = nltk.word_tokenize(caption.lower())
-        tagged = nltk.pos_tag(tokens)
-        
-        # 定义名词和动词的POS标签
-        noun_tags = ['NN', 'NNS', 'NNP', 'NNPS']  # 名词
-        verb_tags = ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']  # 动词
-        
-        nouns = []
-        verbs = []
-        
-        for word, pos in tagged:
-            # 过滤掉标点符号和短词
-            if len(word) > 1 and word.isalpha():
-                if pos in noun_tags:
-                    nouns.append(word)
-                elif pos in verb_tags:
-                    verbs.append(word)
-        
-        return nouns, verbs
+        try:
+            # 使用与原始代码完全相同的逻辑
+            tokens = nltk.word_tokenize(caption.lower())
+            tagged = nltk.pos_tag(tokens)
+            
+            # 定义名词和动词的POS标签 - 与原始代码一致
+            noun_tags = ['NN', 'NNS']  # 与get_word_type_dict()一致
+            verb_tags = ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']  # 与get_verbs_from_string()一致
+            
+            nouns = []
+            verbs = []
+            
+            for word, pos in tagged:
+                # 过滤掉标点符号和短词
+                if len(word) > 1 and word.isalpha():
+                    if pos in noun_tags:
+                        nouns.append(word)
+                    elif pos in verb_tags:
+                        verbs.append(word)
+            
+            return nouns, verbs
+            
+        except Exception as e:
+            print(f"  ⚠️ 词性标注失败: {e}")
+            # 如果NLTK失败，使用简单的分词作为备选
+            tokens = nltk.word_tokenize(caption.lower())
+            filtered_tokens = [w for w in tokens if len(w) > 1 and w.isalpha()]
+            # 简单规则：假设所有词都是名词（保守估计）
+            return filtered_tokens, []
     
     def get_word_embedding(self, word):
         """
@@ -178,54 +212,45 @@ class NounVerbEmbeddingGenerator:
                 all_nouns.extend(nouns)
                 all_verbs.extend(verbs)
             
+            # 保留重复词：与原始代码保持一致，保留词频信息
             noun_lists.append(all_nouns)
             verb_lists.append(all_verbs)
             
             # 处理名词
-            if len(all_nouns) == 0:
-                # 如果没有名词，使用"object"的embedding
-                noun_embeddings[i] = self.get_word_embedding("object")
+            noun_word_embeddings = []
+            for noun in all_nouns:
+                try:
+                    noun_emb = self.get_word_embedding(noun)
+                    noun_word_embeddings.append(noun_emb)
+                except Exception as e:
+                    print(f"  ⚠️ 名词 '{noun}' 生成embedding失败: {e}")
+                    continue
+            
+            if len(noun_word_embeddings) == 0:
+                # 如果没有名词或所有名词embedding生成失败，使用"something"的embedding
+                noun_embeddings[i] = self.get_word_embedding("something")
                 no_nouns_count += 1
             else:
-                # 为每个名词生成embedding并取平均
-                noun_word_embeddings = []
-                for noun in all_nouns:
-                    try:
-                        noun_emb = self.get_word_embedding(noun)
-                        noun_word_embeddings.append(noun_emb)
-                    except Exception as e:
-                        print(f"  ⚠️ 名词 '{noun}' 生成embedding失败: {e}")
-                        continue
-                
-                if len(noun_word_embeddings) == 0:
-                    noun_embeddings[i] = self.get_word_embedding("object")
-                    no_nouns_count += 1
-                else:
-                    noun_embeddings[i] = np.mean(noun_word_embeddings, axis=0)
-                    total_nouns += len(noun_word_embeddings)
+                noun_embeddings[i] = np.mean(noun_word_embeddings, axis=0)
+                total_nouns += len(noun_word_embeddings)
             
             # 处理动词
-            if len(all_verbs) == 0:
-                # 如果没有动词，使用"is"的embedding
+            verb_word_embeddings = []
+            for verb in all_verbs:
+                try:
+                    verb_emb = self.get_word_embedding(verb)
+                    verb_word_embeddings.append(verb_emb)
+                except Exception as e:
+                    print(f"  ⚠️ 动词 '{verb}' 生成embedding失败: {e}")
+                    continue
+            
+            if len(verb_word_embeddings) == 0:
+                # 如果没有动词或所有动词embedding生成失败，使用"is"的embedding
                 verb_embeddings[i] = self.get_word_embedding("is")
                 no_verbs_count += 1
             else:
-                # 为每个动词生成embedding并取平均
-                verb_word_embeddings = []
-                for verb in all_verbs:
-                    try:
-                        verb_emb = self.get_word_embedding(verb)
-                        verb_word_embeddings.append(verb_emb)
-                    except Exception as e:
-                        print(f"  ⚠️ 动词 '{verb}' 生成embedding失败: {e}")
-                        continue
-                
-                if len(verb_word_embeddings) == 0:
-                    verb_embeddings[i] = self.get_word_embedding("is")
-                    no_verbs_count += 1
-                else:
-                    verb_embeddings[i] = np.mean(verb_word_embeddings, axis=0)
-                    total_verbs += len(verb_word_embeddings)
+                verb_embeddings[i] = np.mean(verb_word_embeddings, axis=0)
+                total_verbs += len(verb_word_embeddings)
         
         print(f"\n生成完成!")
         print(f"  总图片数: {n_images}")
@@ -317,8 +342,18 @@ class NounVerbEmbeddingGenerator:
 
 def main():
     """主函数"""
+    # 配置参数
+    input_file = "Anno_Shared1000.txt"
+    output_dir = "./embeddings_output"
+    model_name = "all-mpnet-base-v2"
+    
+    print("开始处理Anno_Shared1000.txt文件...")
+    print("处理方式：每张图像的5个caption分词后，分别提取名词和动词，生成对应的embedding")
+    
     # 创建生成器
-    generator = NounVerbEmbeddingGenerator(model_name='all-MiniLM-L6-v2')
+    generator = NounVerbEmbeddingGenerator(model_name=model_name)
+    generator.caption_file = input_file
+    generator.output_dir = output_dir
     
     # 运行生成流程
     noun_embeddings, verb_embeddings, noun_lists, verb_lists = generator.run()
