@@ -3,7 +3,6 @@
 """
 修正版单词平均Embedding生成器
 基于原始NSD项目的方法，修正分词和embedding生成问题
-将caption分词后，对每个单词生成embedding，然后取平均
 """
 
 import os
@@ -11,7 +10,6 @@ import pickle
 import numpy as np
 import nltk
 from sentence_transformers import SentenceTransformer
-from tqdm import tqdm
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -20,10 +18,10 @@ os.environ['HF_HOME'] = './huggingface_cache'
 os.environ['TRANSFORMERS_CACHE'] = './huggingface_cache'
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'  # 使用国内镜像
 
-class WordAverageEmbeddingGenerator:
+class FixedWordAverageEmbeddingGenerator:
     def __init__(self, model_name='all-mpnet-base-v2'):
         """
-        初始化单词平均embedding生成器
+        初始化修正版单词平均embedding生成器
         
         Args:
             model_name: 使用的sentence transformer模型名称
@@ -31,7 +29,7 @@ class WordAverageEmbeddingGenerator:
         self.model_name = model_name
         self.model = None
         self.caption_file = "Anno_Shared1000.txt"
-        self.output_dir = "embeddings_output"
+        self.output_dir = "embeddings_output_fixed"
         
         # 创建输出目录
         os.makedirs(self.output_dir, exist_ok=True)
@@ -42,12 +40,6 @@ class WordAverageEmbeddingGenerator:
         except LookupError:
             print("正在下载 NLTK punkt 分词器...")
             nltk.download('punkt')
-        
-        try:
-            nltk.data.find('taggers/averaged_perceptron_tagger')
-        except LookupError:
-            print("正在下载 NLTK averaged_perceptron_tagger...")
-            nltk.download('averaged_perceptron_tagger')
         
         # 词汇修正字典（基于原始项目的verb_adjustments）
         self.verb_adjustments = {
@@ -73,16 +65,12 @@ class WordAverageEmbeddingGenerator:
                 self.model = SentenceTransformer(self.model_name)
         except Exception as e:
             print(f"模型加载失败: {e}")
-            print("请尝试以下解决方案:")
-            print("1. 设置环境变量: set HF_ENDPOINT=https://hf-mirror.com")
-            print("2. 手动下载模型到 ./models/all-mpnet-base-v2/ 目录")
-            print("3. 使用其他embedding模型")
             raise e
         
         print(f"模型加载完成，embedding维度: {self.model.get_sentence_embedding_dimension()}")
     
     def load_captions(self):
-        """加载caption文件 - 与simple_extract_embeddings.py完全一致"""
+        """加载caption文件"""
         print(f"正在加载数据: {self.caption_file}")
         
         if not os.path.exists(self.caption_file):
@@ -91,7 +79,7 @@ class WordAverageEmbeddingGenerator:
         # 按图像分组存储数据
         image_data = {}  # {image_id: [caption1, caption2, caption3, caption4, caption5]}
         
-        with open(self.caption_file, 'r', encoding='utf-8') as f:
+        with open(self.caption_file, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
         
         for line in lines:
@@ -123,7 +111,7 @@ class WordAverageEmbeddingGenerator:
     
     def tokenize_caption_original_style(self, caption):
         """
-        使用与原始NSD项目一致的分词方式
+        使用与原始方法一致的分词方式
         
         Args:
             caption: 输入文本
@@ -131,7 +119,7 @@ class WordAverageEmbeddingGenerator:
         Returns:
             tokens: 分词后的单词列表
         """
-        # 使用NLTK进行分词（与原始方法一致，不进行大小写转换）
+        # 使用NLTK进行分词（与原始方法一致）
         tokens = nltk.word_tokenize(caption)
         
         # 应用词汇修正（与原始方法一致）
@@ -150,31 +138,18 @@ class WordAverageEmbeddingGenerator:
         return corrected_tokens
     
     def get_word_embedding(self, word):
-        """
-        获取单个单词的embedding
-        
-        Args:
-            word: 输入单词
-            
-        Returns:
-            embedding: 单词的embedding向量
-        """
-        # 使用sentence transformer对单个单词生成embedding
-        embedding = self.model.encode([word], convert_to_tensor=False)[0]
-        return embedding
+        """获取单个单词的embedding"""
+        try:
+            # 使用sentence transformer对单个单词生成embedding
+            embedding = self.model.encode([word], convert_to_tensor=False)[0]
+            return embedding
+        except Exception as e:
+            print(f"获取单词 '{word}' 的embedding失败: {e}")
+            return None
     
-    def generate_word_average_embeddings(self, captions):
-        """
-        生成单词平均embeddings
-        
-        Args:
-            captions: caption列表，每个元素是一个图片的多句caption列表
-            
-        Returns:
-            embeddings: 单词平均embeddings数组
-            word_lists: 每个图片的单词列表
-        """
-        print("开始生成单词平均embeddings...")
+    def generate_fixed_word_average_embeddings(self, captions):
+        """生成修正版的单词平均embeddings"""
+        print("开始生成修正版单词平均embeddings...")
         
         n_images = len(captions)
         embedding_dim = self.model.get_sentence_embedding_dimension()
@@ -185,9 +160,11 @@ class WordAverageEmbeddingGenerator:
         
         # 统计信息
         total_words = 0
-        skipped_images = 0
+        skipped_words = 0
         
-        for i, image_captions in enumerate(tqdm(captions, desc="处理图片")):
+        for i, image_captions in enumerate(captions):
+            if i % 100 == 0:
+                print(f"处理进度: {i}/{n_images} ({i/n_images*100:.1f}%)")
             
             # 收集该图片所有caption的单词
             all_words = []
@@ -197,40 +174,33 @@ class WordAverageEmbeddingGenerator:
             
             word_lists.append(all_words)
             
-            if len(all_words) == 0:
-                # 如果没有有效单词，使用空字符串的embedding
-                print(f"  ⚠️ 图片 {i} 没有有效单词")
-                embeddings[i] = self.get_word_embedding("")
-                skipped_images += 1
-                continue
-            
-            # 为每个单词生成embedding（与原始方法一致）
+            # 为每个单词生成embedding
             word_embeddings = []
             for word in all_words:
                 try:
-                    # 使用与原始方法一致的embedding生成方式
                     word_emb = self.get_word_embedding(word)
                     if word_emb is not None:
                         word_embeddings.append(word_emb)
                         total_words += 1
+                    else:
+                        skipped_words += 1
                 except Exception as e:
-                    # 如果单词不存在embedding，跳过（与原始方法一致）
-                    continue
+                    print(f"  ⚠️ 单词 '{word}' 生成embedding失败: {e}")
+                    skipped_words += 1
             
             if len(word_embeddings) == 0:
                 # 如果没有有效单词，使用空字符串的embedding
                 print(f"  ⚠️ 图片 {i} 没有有效单词")
                 embeddings[i] = self.get_word_embedding("")
-                skipped_images += 1
             else:
-                # 计算单词embeddings的平均值（与原始方法一致）
+                # 计算单词平均embedding（与原始方法一致）
                 embeddings[i] = np.mean(np.asarray(word_embeddings), axis=0)
         
         print(f"\n生成完成!")
         print(f"  总图片数: {n_images}")
         print(f"  总单词数: {total_words}")
+        print(f"  跳过单词数: {skipped_words}")
         print(f"  平均每图片单词数: {total_words/n_images:.2f}")
-        print(f"  跳过图片数: {skipped_images}")
         print(f"  Embedding维度: {embedding_dim}")
         
         return embeddings, word_lists
@@ -239,28 +209,29 @@ class WordAverageEmbeddingGenerator:
         """保存embeddings和元数据"""
         print("保存结果...")
         
-        # 保存embeddings
-        embedding_file = os.path.join(self.output_dir, "word_average_embeddings.npy")
+        # 保存单词平均embeddings
+        embedding_file = os.path.join(self.output_dir, "word_average_embeddings_fixed.npy")
         np.save(embedding_file, embeddings)
-        print(f"  Embeddings已保存: {embedding_file}")
+        print(f"  单词平均embeddings已保存: {embedding_file}")
         
         # 保存元数据
         metadata = {
             'model_name': self.model_name,
-            'embedding_type': 'word_average',
+            'embedding_type': 'fixed_word_average',
             'n_captions': len(embeddings),
             'embedding_dim': embeddings.shape[1],
             'caption_file': self.caption_file,
-            'description': 'Word-level embeddings averaged across all words in each caption'
+            'description': 'Fixed word average embeddings using original NSD method style',
+            'embedding_file': embedding_file
         }
         
-        metadata_file = os.path.join(self.output_dir, "word_average_metadata.pkl")
+        metadata_file = os.path.join(self.output_dir, "fixed_word_average_metadata.pkl")
         with open(metadata_file, 'wb') as f:
             pickle.dump(metadata, f)
         print(f"  元数据已保存: {metadata_file}")
         
         # 保存单词列表
-        word_lists_file = os.path.join(self.output_dir, "word_lists.pkl")
+        word_lists_file = os.path.join(self.output_dir, "word_lists_fixed.pkl")
         with open(word_lists_file, 'wb') as f:
             pickle.dump(word_lists, f)
         print(f"  单词列表已保存: {word_lists_file}")
@@ -270,7 +241,7 @@ class WordAverageEmbeddingGenerator:
     def run(self):
         """运行完整的embedding生成流程"""
         print("=" * 60)
-        print("单词平均Embedding生成器")
+        print("修正版单词平均Embedding生成器")
         print("=" * 60)
         
         # 1. 加载模型
@@ -280,32 +251,31 @@ class WordAverageEmbeddingGenerator:
         captions = self.load_captions()
         
         # 3. 生成embeddings
-        embeddings, word_lists = self.generate_word_average_embeddings(captions)
+        embeddings, word_lists = self.generate_fixed_word_average_embeddings(captions)
         
         # 4. 保存结果
-        embedding_file, metadata_file, word_lists_file = self.save_embeddings(embeddings, word_lists)
+        files = self.save_embeddings(embeddings, word_lists)
         
         print("\n" + "=" * 60)
         print("生成完成!")
-        print(f"Embedding文件: {embedding_file}")
-        print(f"元数据文件: {metadata_file}")
-        print(f"单词列表文件: {word_lists_file}")
+        for file in files:
+            print(f"文件: {file}")
         print("=" * 60)
         
         return embeddings, word_lists
 
 def main():
-    """主函数 - 与simple_extract_embeddings.py完全一致"""
+    """主函数"""
     # 配置参数
     input_file = "Anno_Shared1000.txt"
-    output_dir = "./embeddings_output"
+    output_dir = "./embeddings_output_fixed"
     model_name = "all-mpnet-base-v2"
     
     print("开始处理Anno_Shared1000.txt文件...")
-    print("处理方式：修正版单词平均embedding生成（与原始NSD方法一致）")
+    print("处理方式：修正版单词平均embedding生成")
     
     # 创建生成器
-    generator = WordAverageEmbeddingGenerator(model_name=model_name)
+    generator = FixedWordAverageEmbeddingGenerator(model_name=model_name)
     generator.caption_file = input_file
     generator.output_dir = output_dir
     
@@ -313,7 +283,7 @@ def main():
     embeddings, word_lists = generator.run()
     
     # 显示一些统计信息
-    print(f"\nEmbedding统计信息:")
+    print(f"\n单词平均Embedding统计信息:")
     print(f"  形状: {embeddings.shape}")
     print(f"  均值: {embeddings.mean():.4f}")
     print(f"  标准差: {embeddings.std():.4f}")
