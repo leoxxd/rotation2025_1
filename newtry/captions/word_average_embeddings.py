@@ -163,12 +163,13 @@ class WordAverageEmbeddingGenerator:
         embedding = self.model.encode([word], convert_to_tensor=False)[0]
         return embedding
     
-    def generate_word_average_embeddings(self, captions):
+    def generate_word_average_embeddings(self, captions, normalize_embeddings=True):
         """
         生成单词平均embeddings
         
         Args:
             captions: caption列表，每个元素是一个图片的多句caption列表
+            normalize_embeddings: 是否对embedding进行z-score归一化
             
         Returns:
             embeddings: 单词平均embeddings数组
@@ -226,12 +227,23 @@ class WordAverageEmbeddingGenerator:
                 # 计算单词embeddings的平均值（与原始方法一致）
                 embeddings[i] = np.mean(np.asarray(word_embeddings), axis=0)
         
+        # 可选的embedding归一化
+        if normalize_embeddings:
+            print("\n对embeddings进行z-score归一化...")
+            # 对embeddings进行z-score归一化
+            embedding_mean = np.mean(embeddings, axis=0)
+            embedding_std = np.std(embeddings, axis=0)
+            embeddings = (embeddings - embedding_mean) / (embedding_std + 1e-8)  # 添加小常数避免除零
+            
+            print(f"  Embedding归一化: mean={np.mean(embeddings):.6f}, std={np.std(embeddings):.6f}")
+        
         print(f"\n生成完成!")
         print(f"  总图片数: {n_images}")
         print(f"  总单词数: {total_words}")
         print(f"  平均每图片单词数: {total_words/n_images:.2f}")
         print(f"  跳过图片数: {skipped_images}")
         print(f"  Embedding维度: {embedding_dim}")
+        print(f"  归一化: {'是' if normalize_embeddings else '否'}")
         
         return embeddings, word_lists
     
@@ -279,8 +291,8 @@ class WordAverageEmbeddingGenerator:
         # 2. 加载captions
         captions = self.load_captions()
         
-        # 3. 生成embeddings
-        embeddings, word_lists = self.generate_word_average_embeddings(captions)
+        # 3. 生成embeddings（默认启用归一化）
+        embeddings, word_lists = self.generate_word_average_embeddings(captions, normalize_embeddings=True)
         
         # 4. 保存结果
         embedding_file, metadata_file, word_lists_file = self.save_embeddings(embeddings, word_lists)

@@ -52,10 +52,79 @@ class NounVerbEmbeddingGenerator:
         
         # 词汇修正字典（基于原始项目的verb_adjustments）
         self.verb_adjustments = {
-            # 常见的拼写错误和误分类
-            'waterskiing': '_____no_embedding_____',
-            'unpealed': '_____no_embedding_____',
-            # 可以添加更多修正规则
+            "unpealed": "_____no_embedding_____",
+            "pirched": "_____no_embedding_____",
+            "kitboarding": "kite-surfing",
+            "suckingling": "sucking",
+            "reahced": "reached",
+            "ealking": "leaking",
+            "bursking": "_____no_embedding_____",
+            "d'oeuvre": "_____not_verb_/_unknown_____",
+            "PIcked": "picked",
+            "wlaks": "walks",
+            "Parketing": "_____not_verb_/_unknown_____",
+            "plowig": "plowing",
+            "igrinding": "grinding",
+            "hay.surrounded": "surrounded",
+            "depics": "depicts",
+            "oarked": "parked",
+            "toothpicked": "_____no_embedding_____",
+            "staanding": "standing",
+            "Delapidated": "dilapidated",
+            "foilaged": "foliaged",
+            "parasurfing": "_____no_embedding_____",
+            "giraffestanding": "standing",
+            "deckered": "_____no_embedding_____",
+            "expolsed": "_____not_verb_/_unknown_____",
+            "attachced": "attached",
+            "holdong": "holding",
+            "Horsed": "_____not_verb_/_unknown_____",
+            "dessed": "dressed",
+            "hook'n": "_____not_verb_/_unknown_____",
+            "traveleing": "travelling",
+            "rididing": "riding",
+            "caryring": "carrying",
+            "rcieve": "receive",
+            "fluies": "_____not_verb_/_unknown_____",
+            "grabbbing": "grabbing",
+            "ptiched": "pitched",
+            "skatboarding": "skateboarding",
+            "waterskiing": "_____no_embedding_____",
+            "waterskiis": "_____no_embedding_____",
+            "paraskiing": "_____no_embedding_____",
+            "fasioned": "_____not_verb_/_unknown_____",
+            "half-covering": "covering",
+            "ecorated": "_____not_verb_/_unknown_____",
+            "dipicting": "depicting",
+            "silhoetted": "silhouetted",
+            "stoppedon": "stopped",
+            "hsome": "_____not_verb_/_unknown_____",
+            "deocarated": "decorated",
+            "elephant.at": "_____not_verb_/_unknown_____",
+            "placining": "placing",
+            "shrubbs": "_____not_verb_/_unknown_____",
+            "standihng": "standing",
+            "irding": "riding",
+            "srufing": "surfing",
+            "resembing": "resembling",
+            "Aproned": "_____not_verb_/_unknown_____",
+            "lfits": "lifts",
+            "sittinng": "sitting",
+            "t=with": "_____not_verb_/_unknown_____",
+            "croched": "_____not_verb_/_unknown_____",
+            "standig": "_____not_verb_/_unknown_____",
+            "fly-hing": "flying",
+            "ehating": "heating",
+            "metling": "melting",
+            "signs.On": "_____not_verb_/_unknown_____",
+            "stetched": "_____not_verb_/_unknown_____",
+            "cocered": "_____not_verb_/_unknown_____",
+            "doecarted": "decorated",
+            "leanding": "_____not_verb_/_unknown_____",
+            "stanging": "standing",
+            "buriesd": "buried",
+            "payign": "paying",
+            "widnshield": "_____not_verb_/_unknown_____",
         }
     
     def load_model(self):
@@ -143,21 +212,39 @@ class NounVerbEmbeddingGenerator:
         tokens = nltk.word_tokenize(s)  # 不进行大小写转换
         tagged = nltk.pos_tag(tokens)
         
+        # 注意：原始项目的get_word_type_from_string函数没有应用词汇修正
+        # 词汇修正只在动词embedding生成时单独处理
+        return [x[0] for x in tagged if x[1] in word_type_dict[word_type]]
+    
+    def get_verbs_from_string_original_style(self, s):
+        """
+        复制原始NSD项目的动词提取方法，包含词汇修正
+        
+        Args:
+            s: 输入句子
+            
+        Returns:
+            verbs: 动词列表
+        """
+        # 复制原始项目的get_verbs_from_string函数
+        tokens = nltk.word_tokenize(s)
+        tagged = nltk.pos_tag(tokens)
+        verbs = [x[0] for x in tagged if x[1] in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']]
+        
         # 应用词汇修正（与原始方法一致）
-        corrected_words = []
-        for word, pos in tagged:
-            if word in self.verb_adjustments:
-                if self.verb_adjustments[word] == "_____not_verb_/_unknown_____":
+        corrected_verbs = []
+        for verb in verbs:
+            if verb in self.verb_adjustments:
+                if self.verb_adjustments[verb] == "_____not_verb_/_unknown_____":
                     continue  # 跳过这个词汇
-                elif self.verb_adjustments[word] == "_____no_embedding_____":
+                elif self.verb_adjustments[verb] == "_____no_embedding_____":
                     continue  # 跳过没有embedding的词汇
                 else:
-                    word = self.verb_adjustments[word]
-            corrected_words.append((word, pos))
+                    verb = self.verb_adjustments[verb]
+            corrected_verbs.append(verb)
         
-        # 返回指定词性的单词
-        return [x[0] for x in corrected_words if x[1] in word_type_dict[word_type]]
-    
+        return corrected_verbs
+
     def extract_nouns_and_verbs_original_style(self, caption):
         """
         使用与原始NSD项目一致的方法提取名词和动词
@@ -170,9 +257,10 @@ class NounVerbEmbeddingGenerator:
             verbs: 动词列表
         """
         try:
-            # 使用与原始方法完全一致的函数
+            # 名词：不应用词汇修正
             nouns = self.get_word_type_from_string_original_style(caption, 'noun')
-            verbs = self.get_word_type_from_string_original_style(caption, 'verb')
+            # 动词：应用词汇修正
+            verbs = self.get_verbs_from_string_original_style(caption)
             
             return nouns, verbs
             
@@ -198,12 +286,13 @@ class NounVerbEmbeddingGenerator:
         embedding = self.model.encode([word], convert_to_tensor=False)[0]
         return embedding
     
-    def generate_noun_verb_embeddings(self, captions):
+    def generate_noun_verb_embeddings(self, captions, normalize_embeddings=True):
         """
         生成名词和动词的embeddings
         
         Args:
             captions: caption列表，每个元素是一个图片的多句caption列表
+            normalize_embeddings: 是否对embedding进行z-score归一化
             
         Returns:
             noun_embeddings: 名词embeddings数组
@@ -281,6 +370,22 @@ class NounVerbEmbeddingGenerator:
                 verb_embeddings[i] = np.mean(verb_word_embeddings, axis=0)
                 total_verbs += len(verb_word_embeddings)
         
+        # 可选的embedding归一化
+        if normalize_embeddings:
+            print("\n对embeddings进行z-score归一化...")
+            # 对名词embeddings进行z-score归一化
+            noun_mean = np.mean(noun_embeddings, axis=0)
+            noun_std = np.std(noun_embeddings, axis=0)
+            noun_embeddings = (noun_embeddings - noun_mean) / (noun_std + 1e-8)  # 添加小常数避免除零
+            
+            # 对动词embeddings进行z-score归一化
+            verb_mean = np.mean(verb_embeddings, axis=0)
+            verb_std = np.std(verb_embeddings, axis=0)
+            verb_embeddings = (verb_embeddings - verb_mean) / (verb_std + 1e-8)  # 添加小常数避免除零
+            
+            print(f"  名词embedding归一化: mean={np.mean(noun_embeddings):.6f}, std={np.std(noun_embeddings):.6f}")
+            print(f"  动词embedding归一化: mean={np.mean(verb_embeddings):.6f}, std={np.std(verb_embeddings):.6f}")
+        
         print(f"\n生成完成!")
         print(f"  总图片数: {n_images}")
         print(f"  总名词数: {total_nouns}")
@@ -290,6 +395,7 @@ class NounVerbEmbeddingGenerator:
         print(f"  无名词图片数: {no_nouns_count}")
         print(f"  无动词图片数: {no_verbs_count}")
         print(f"  Embedding维度: {embedding_dim}")
+        print(f"  归一化: {'是' if normalize_embeddings else '否'}")
         
         return noun_embeddings, verb_embeddings, noun_lists, verb_lists
     
@@ -350,8 +456,8 @@ class NounVerbEmbeddingGenerator:
         # 2. 加载captions
         captions = self.load_captions()
         
-        # 3. 生成embeddings
-        noun_embeddings, verb_embeddings, noun_lists, verb_lists = self.generate_noun_verb_embeddings(captions)
+        # 3. 生成embeddings（默认启用归一化）
+        noun_embeddings, verb_embeddings, noun_lists, verb_lists = self.generate_noun_verb_embeddings(captions, normalize_embeddings=True)
         
         # 4. 保存结果
         noun_file, verb_file, metadata_file, noun_lists_file, verb_lists_file = self.save_embeddings(
