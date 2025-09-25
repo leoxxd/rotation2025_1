@@ -49,6 +49,14 @@ class NounVerbEmbeddingGenerator:
         except LookupError:
             print("正在下载 NLTK averaged_perceptron_tagger...")
             nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_path, force=True)
+        
+        # 词汇修正字典（基于原始项目的verb_adjustments）
+        self.verb_adjustments = {
+            # 常见的拼写错误和误分类
+            'waterskiing': '_____no_embedding_____',
+            'unpealed': '_____no_embedding_____',
+            # 可以添加更多修正规则
+        }
     
     def load_model(self):
         """加载sentence transformer模型"""
@@ -114,9 +122,45 @@ class NounVerbEmbeddingGenerator:
         
         return captions
     
-    def extract_nouns_and_verbs(self, caption):
+    def get_word_type_from_string_original_style(self, s, word_type):
         """
-        从caption中提取名词和动词 - 与原始代码完全一致
+        完全复制原始NSD项目的get_word_type_from_string函数
+        
+        Args:
+            s: 输入句子
+            word_type: 词性类型 ('noun' 或 'verb')
+            
+        Returns:
+            words: 指定词性的单词列表
+        """
+        # 复制原始项目的get_word_type_dict函数
+        word_type_dict = {
+            'noun': ['NN', 'NNS'], 
+            'verb': ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']
+        }
+        
+        # 复制原始项目的get_sentence_tags函数
+        tokens = nltk.word_tokenize(s)  # 不进行大小写转换
+        tagged = nltk.pos_tag(tokens)
+        
+        # 应用词汇修正（与原始方法一致）
+        corrected_words = []
+        for word, pos in tagged:
+            if word in self.verb_adjustments:
+                if self.verb_adjustments[word] == "_____not_verb_/_unknown_____":
+                    continue  # 跳过这个词汇
+                elif self.verb_adjustments[word] == "_____no_embedding_____":
+                    continue  # 跳过没有embedding的词汇
+                else:
+                    word = self.verb_adjustments[word]
+            corrected_words.append((word, pos))
+        
+        # 返回指定词性的单词
+        return [x[0] for x in corrected_words if x[1] in word_type_dict[word_type]]
+    
+    def extract_nouns_and_verbs_original_style(self, caption):
+        """
+        使用与原始NSD项目一致的方法提取名词和动词
         
         Args:
             caption: 输入文本
@@ -126,24 +170,9 @@ class NounVerbEmbeddingGenerator:
             verbs: 动词列表
         """
         try:
-            # 使用与原始代码完全相同的逻辑
-            tokens = nltk.word_tokenize(caption.lower())
-            tagged = nltk.pos_tag(tokens)
-            
-            # 定义名词和动词的POS标签 - 与原始代码一致
-            noun_tags = ['NN', 'NNS']  # 与get_word_type_dict()一致
-            verb_tags = ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']  # 与get_verbs_from_string()一致
-            
-            nouns = []
-            verbs = []
-            
-            for word, pos in tagged:
-                # 过滤掉标点符号和短词
-                if len(word) > 1 and word.isalpha():
-                    if pos in noun_tags:
-                        nouns.append(word)
-                    elif pos in verb_tags:
-                        verbs.append(word)
+            # 使用与原始方法完全一致的函数
+            nouns = self.get_word_type_from_string_original_style(caption, 'noun')
+            verbs = self.get_word_type_from_string_original_style(caption, 'verb')
             
             return nouns, verbs
             
@@ -208,7 +237,7 @@ class NounVerbEmbeddingGenerator:
             all_verbs = []
             
             for j, caption in enumerate(image_captions):
-                nouns, verbs = self.extract_nouns_and_verbs(caption)
+                nouns, verbs = self.extract_nouns_and_verbs_original_style(caption)
                 all_nouns.extend(nouns)
                 all_verbs.extend(verbs)
             
