@@ -749,11 +749,7 @@ class RSAAnalyzerWithEmbeddingChoice:
             axes[0, 0].set_ylabel('相关性')
             axes[0, 0].grid(True, alpha=0.3)
             
-            # 添加数值标签
-            for bar, value in zip(bars, raw_corrs):
-                height = bar.get_height()
-                axes[0, 0].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                               f'{value:.3f}', ha='center', va='bottom', fontsize=9)
+            # 不添加数值标签，保持图表简洁
             
             # 校正后相关性
             bars = axes[0, 1].bar(subjects, corrected_corrs, color='lightgreen', alpha=0.7, edgecolor='black')
@@ -761,11 +757,7 @@ class RSAAnalyzerWithEmbeddingChoice:
             axes[0, 1].set_ylabel('相关性')
             axes[0, 1].grid(True, alpha=0.3)
             
-            # 添加数值标签
-            for bar, value in zip(bars, corrected_corrs):
-                height = bar.get_height()
-                axes[0, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                               f'{value:.3f}', ha='center', va='bottom', fontsize=9)
+            # 不添加数值标签，保持图表简洁
             
             # 噪声天花板
             bars = axes[1, 0].bar(subjects, noise_ceilings, color='lightcoral', alpha=0.7, edgecolor='black')
@@ -773,11 +765,7 @@ class RSAAnalyzerWithEmbeddingChoice:
             axes[1, 0].set_ylabel('噪声天花板')
             axes[1, 0].grid(True, alpha=0.3)
             
-            # 添加数值标签
-            for bar, value in zip(bars, noise_ceilings):
-                height = bar.get_height()
-                axes[1, 0].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                               f'{value:.3f}', ha='center', va='bottom', fontsize=9)
+            # 不添加数值标签，保持图表简洁
             
             # 校正效果
             improvements = [c - r for c, r in zip(corrected_corrs, raw_corrs)]
@@ -786,11 +774,7 @@ class RSAAnalyzerWithEmbeddingChoice:
             axes[1, 1].set_ylabel('相关性提升')
             axes[1, 1].grid(True, alpha=0.3)
             
-            # 添加数值标签
-            for bar, value in zip(bars, improvements):
-                height = bar.get_height()
-                axes[1, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                               f'{value:.3f}', ha='center', va='bottom', fontsize=9)
+            # 不添加数值标签，保持图表简洁
             
             plt.tight_layout()
             plt.savefig(os.path.join(roi_dir, f'{roi_key}_rsa_analysis{self.output_suffix}.png'), dpi=300, bbox_inches='tight')
@@ -852,30 +836,7 @@ class RSAAnalyzerWithEmbeddingChoice:
             axes[0, 0].legend()
             axes[0, 0].grid(True, alpha=0.3)
             
-            # 添加数值标签
-            for bar, value in zip(bars1, lh_raw):
-                if value != 0:
-                    height = bar.get_height()
-                    if value >= 0:
-                        # 正值：标签在柱子上方
-                        axes[0, 0].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                                       f'{value:.3f}', ha='center', va='bottom', fontsize=8)
-                    else:
-                        # 负值：标签在柱子下方
-                        axes[0, 0].text(bar.get_x() + bar.get_width()/2., height - 0.01,
-                                       f'{value:.3f}', ha='center', va='top', fontsize=8)
-            
-            for bar, value in zip(bars2, rh_raw):
-                if value != 0:
-                    height = bar.get_height()
-                    if value >= 0:
-                        # 正值：标签在柱子上方
-                        axes[0, 0].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                                       f'{value:.3f}', ha='center', va='bottom', fontsize=8)
-                    else:
-                        # 负值：标签在柱子下方
-                        axes[0, 0].text(bar.get_x() + bar.get_width()/2., height - 0.01,
-                                       f'{value:.3f}', ha='center', va='top', fontsize=8)
+            # 不添加数值标签，保持图表简洁
             
             # 2. 校正后相关性 - 按ROI分组显示左右脑
             lh_corrected = [roi_data[roi]['lh']['corrected_correlation'] if 'lh' in roi_data[roi] else 0 for roi in roi_names]
@@ -891,30 +852,7 @@ class RSAAnalyzerWithEmbeddingChoice:
             axes[0, 1].legend()
             axes[0, 1].grid(True, alpha=0.3)
             
-            # 添加数值标签
-            for bar, value in zip(bars1, lh_corrected):
-                if value != 0:
-                    height = bar.get_height()
-                    if value >= 0:
-                        # 正值：标签在柱子上方
-                        axes[0, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                                       f'{value:.3f}', ha='center', va='bottom', fontsize=8)
-                    else:
-                        # 负值：标签在柱子下方
-                        axes[0, 1].text(bar.get_x() + bar.get_width()/2., height - 0.01,
-                                       f'{value:.3f}', ha='center', va='top', fontsize=8)
-            
-            for bar, value in zip(bars2, rh_corrected):
-                if value != 0:
-                    height = bar.get_height()
-                    if value >= 0:
-                        # 正值：标签在柱子上方
-                        axes[0, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                                       f'{value:.3f}', ha='center', va='bottom', fontsize=8)
-                    else:
-                        # 负值：标签在柱子下方
-                        axes[0, 1].text(bar.get_x() + bar.get_width()/2., height - 0.01,
-                                       f'{value:.3f}', ha='center', va='top', fontsize=8)
+            # 不添加数值标签，保持图表简洁
             
             # 3. 噪声天花板 - 按ROI分组显示左右脑
             lh_noise = [roi_data[roi]['lh']['noise_ceiling'] if 'lh' in roi_data[roi] else 0 for roi in roi_names]
@@ -930,30 +868,7 @@ class RSAAnalyzerWithEmbeddingChoice:
             axes[1, 0].legend()
             axes[1, 0].grid(True, alpha=0.3)
             
-            # 添加数值标签
-            for bar, value in zip(bars1, lh_noise):
-                if value != 0:
-                    height = bar.get_height()
-                    if value >= 0:
-                        # 正值：标签在柱子上方
-                        axes[1, 0].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                                       f'{value:.3f}', ha='center', va='bottom', fontsize=8)
-                    else:
-                        # 负值：标签在柱子下方
-                        axes[1, 0].text(bar.get_x() + bar.get_width()/2., height - 0.01,
-                                       f'{value:.3f}', ha='center', va='top', fontsize=8)
-            
-            for bar, value in zip(bars2, rh_noise):
-                if value != 0:
-                    height = bar.get_height()
-                    if value >= 0:
-                        # 正值：标签在柱子上方
-                        axes[1, 0].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                                       f'{value:.3f}', ha='center', va='bottom', fontsize=8)
-                    else:
-                        # 负值：标签在柱子下方
-                        axes[1, 0].text(bar.get_x() + bar.get_width()/2., height - 0.01,
-                                       f'{value:.3f}', ha='center', va='top', fontsize=8)
+            # 不添加数值标签，保持图表简洁
             
             # 4. 校正效果 - 按ROI分组显示左右脑
             lh_improvement = [lh_corrected[i] - lh_raw[i] for i in range(len(roi_names))]
@@ -969,30 +884,7 @@ class RSAAnalyzerWithEmbeddingChoice:
             axes[1, 1].legend()
             axes[1, 1].grid(True, alpha=0.3)
             
-            # 添加数值标签
-            for bar, value in zip(bars1, lh_improvement):
-                if value != 0:
-                    height = bar.get_height()
-                    if value >= 0:
-                        # 正值：标签在柱子上方
-                        axes[1, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                                       f'{value:.3f}', ha='center', va='bottom', fontsize=8)
-                    else:
-                        # 负值：标签在柱子下方
-                        axes[1, 1].text(bar.get_x() + bar.get_width()/2., height - 0.01,
-                                       f'{value:.3f}', ha='center', va='top', fontsize=8)
-            
-            for bar, value in zip(bars2, rh_improvement):
-                if value != 0:
-                    height = bar.get_height()
-                    if value >= 0:
-                        # 正值：标签在柱子上方
-                        axes[1, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                                       f'{value:.3f}', ha='center', va='bottom', fontsize=8)
-                    else:
-                        # 负值：标签在柱子下方
-                        axes[1, 1].text(bar.get_x() + bar.get_width()/2., height - 0.01,
-                                       f'{value:.3f}', ha='center', va='top', fontsize=8)
+            # 不添加数值标签，保持图表简洁
             
             plt.tight_layout()
             plt.savefig(os.path.join(subject_dir, f'{subject}_rsa_analysis{self.output_suffix}.png'), dpi=300, bbox_inches='tight')
